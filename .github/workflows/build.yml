@@ -47,6 +47,7 @@ jobs:
 
       - name: Sign packages
         run: |
+          # ASCII-armored signatures (.asc)
           gpg --batch --yes --pinentry-mode loopback --passphrase '' \
             --detach-sign --armor \
             --default-key "$GPGKEY" \
@@ -55,6 +56,18 @@ jobs:
             --detach-sign --armor \
             --default-key "$GPGKEY" \
             build-tui/sanki-tui
+          # Binary signatures (.sig) for pacman
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' \
+            --detach-sign \
+            --default-key "$GPGKEY" \
+            sanki-enhanced-${GITHUB_REF_NAME#v}-1-x86_64.pkg.tar.zst
+          cp sanki-enhanced-${GITHUB_REF_NAME#v}-1-x86_64.pkg.tar.zst.sig \
+             sanki-enhanced-${GITHUB_REF_NAME#v}-1-x86_64.pkg.tar.zst.sig
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' \
+            --detach-sign \
+            --default-key "$GPGKEY" \
+            build-tui/sanki-tui
+          mv build-tui/sanki-tui.sig sanki-tui.sig
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -63,8 +76,10 @@ jobs:
           path: |
             sanki-enhanced-*.pkg.tar.zst
             sanki-enhanced-*.pkg.tar.zst.asc
+            sanki-enhanced-*.pkg.tar.zst.sig
             build-tui/sanki-tui
             build-tui/sanki-tui.asc
+            sanki-tui.sig
 
       - name: Release
         uses: softprops/action-gh-release@v2
@@ -72,8 +87,10 @@ jobs:
           files: |
             sanki-enhanced-*.pkg.tar.zst
             sanki-enhanced-*.pkg.tar.zst.asc
+            sanki-enhanced-*.pkg.tar.zst.sig
             build-tui/sanki-tui
             build-tui/sanki-tui.asc
+            sanki-tui.sig
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
