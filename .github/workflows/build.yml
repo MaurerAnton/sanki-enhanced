@@ -15,44 +15,41 @@ jobs:
         run: |
           pacman -Syu --noconfirm
           pacman -S --noconfirm \
-            qt5-base qt5-charts qt5-tools \
-            cmake ninja git unzip \
-            ncurses pkgconf
+            qt5-base cmake ninja git \
+            unzip ncurses pkgconf
 
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Init submodules
-        run: git submodule update --init --recursive || true
 
       - name: Build TUI
         run: |
           cmake -S tui -B build-tui -DCMAKE_BUILD_TYPE=Release
           cmake --build build-tui -j$(nproc)
 
-      - name: Build GUI
-        run: |
-          TARGET_DEVICE=PC qmake
-          make -j$(nproc)
-
       - name: Create pkgdir
         run: |
           mkdir -p pkg/sanki-enhanced/usr/bin
-          cp build/pc/sanki pkg/sanki-enhanced/usr/bin/sanki-gui 2>/dev/null || true
           cp build-tui/sanki-tui pkg/sanki-enhanced/usr/bin/sanki-tui
 
       - name: Package .pkg.tar.zst
         run: |
           cd pkg/sanki-enhanced
-          tar --zstd -cf ../../sanki-enhanced-${GITHUB_REF_NAME}-x86_64.pkg.tar.zst .
+          tar --zstd -cf ../../sanki-enhanced-${GITHUB_REF_NAME#v}-1-x86_64.pkg.tar.zst .
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanki-enhanced-arch-packages
+          path: |
+            sanki-enhanced-*.pkg.tar.zst
+            build-tui/sanki-tui
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            sanki-enhanced-*-x86_64.pkg.tar.zst
+            sanki-enhanced-*.pkg.tar.zst
             build-tui/sanki-tui
-            build/pc/sanki
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
