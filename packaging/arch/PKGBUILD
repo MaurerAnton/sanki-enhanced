@@ -1,0 +1,50 @@
+# Maintainer: MaurerAnton
+# Sanki — small Anki app for e-readers + TUI
+
+_realname=sanki-enhanced
+pkgname=sanki-enhanced
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="Small Anki flashcard app (Qt GUI + TUI) for e-readers and terminal"
+arch=('x86_64')
+url="https://github.com/MaurerAnton/sanki-enhanced"
+license=('MIT')
+depends=('qt5-base' 'qt5-charts' 'qt5-tools' 'cmake' 'ncurses' 'unzip')
+makedepends=('git')
+source=("$pkgname::git+https://github.com/MaurerAnton/sanki-enhanced.git")
+sha256sums=('SKIP')
+
+prepare() {
+    cd "$pkgname"
+    git submodule update --init --recursive || true
+}
+
+build() {
+    cd "$pkgname"
+
+    # Build Qt GUI version
+    msg "Building Qt GUI..."
+    TARGET_DEVICE=PC qmake
+    make -j$(nproc)
+
+    # Build TUI version
+    msg "Building TUI..."
+    mkdir -p build-tui
+    cmake -S tui -B build-tui \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr
+    make -j$(nproc) -C build-tui
+}
+
+package() {
+    cd "$pkgname"
+
+    # Install Qt GUI binary
+    install -Dm755 build/pc/sanki "$pkgdir/usr/bin/sanki-gui"
+
+    # Install TUI binary
+    install -Dm755 build-tui/sanki-tui "$pkgdir/usr/bin/sanki-tui"
+
+    # Install desktop file for GUI
+    install -Dm644 inkbox_userapp/sanki.desktop "$pkgdir/usr/share/applications/sanki.desktop" 2>/dev/null || true
+}
