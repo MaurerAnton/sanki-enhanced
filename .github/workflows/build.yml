@@ -61,8 +61,6 @@ jobs:
             --detach-sign \
             --default-key "$GPGKEY" \
             sanki-enhanced-${GITHUB_REF_NAME#v}-1-x86_64.pkg.tar.zst
-          cp sanki-enhanced-${GITHUB_REF_NAME#v}-1-x86_64.pkg.tar.zst.sig \
-             sanki-enhanced-${GITHUB_REF_NAME#v}-1-x86_64.pkg.tar.zst.sig
           gpg --batch --yes --pinentry-mode loopback --passphrase '' \
             --detach-sign \
             --default-key "$GPGKEY" \
