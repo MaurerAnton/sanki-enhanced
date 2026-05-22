@@ -19,7 +19,7 @@ jobs:
           pacman -Syu --noconfirm
           pacman -S --noconfirm \
             qt5-base cmake ninja git \
-            unzip ncurses pkgconf
+            unzip ncurses pkgconf gnupg
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,20 +39,41 @@ jobs:
           cd pkg/sanki-enhanced
           tar --zstd -cf ../../sanki-enhanced-${GITHUB_REF_NAME#v}-1-x86_64.pkg.tar.zst .
 
+      - name: Import GPG key
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | base64 -d | gpg --batch --import
+          GPGKEY=$(gpg --list-secret-keys --with-colons | grep '^sec:' -A1 | grep '^fpr:' | head -1 | cut -d: -f10)
+          echo "GPGKEY=$GPGKEY" >> $GITHUB_ENV
+
+      - name: Sign packages
+        run: |
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' \
+            --detach-sign --armor \
+            --default-key "$GPGKEY" \
+            sanki-enhanced-${GITHUB_REF_NAME#v}-1-x86_64.pkg.tar.zst
+          gpg --batch --yes --pinentry-mode loopback --passphrase '' \
+            --detach-sign --armor \
+            --default-key "$GPGKEY" \
+            build-tui/sanki-tui
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: sanki-enhanced-arch-packages
           path: |
             sanki-enhanced-*.pkg.tar.zst
+            sanki-enhanced-*.pkg.tar.zst.asc
             build-tui/sanki-tui
+            build-tui/sanki-tui.asc
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             sanki-enhanced-*.pkg.tar.zst
+            sanki-enhanced-*.pkg.tar.zst.asc
             build-tui/sanki-tui
+            build-tui/sanki-tui.asc
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
