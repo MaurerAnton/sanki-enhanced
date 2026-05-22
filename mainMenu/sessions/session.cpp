@@ -1,0 +1,188 @@
+#include "session.h"
+#include "ui_session.h"
+#include "mainMenu/sessions/editSession.h"
+#include "mainMenu/sessions/sessionStruct.h"
+#include "components/other/cardBrowser.h"
+#include "components/other/cardEditor.h"
+#include "cardView/modes/sm2/sm2.h"
+
+#include <QMouseEvent>
+#include <QSettings>
+#include <QTimer>
+#include <QToolTip>
+
+session::session(QWidget *parent) :
+    QWidget(parent),
+    ui(new Ui::session)
+{
+    ui->setupUi(this);
+    this->setAttribute(Qt::WA_DeleteOnClose);
+
+    if(ereader) {
+        qDebug() << "Applying ereader settings in session";
+        //ui->sessionName->setStyleSheet("font-size: 9pt");
+        //ui->ButtonOptions->setStyleSheet("font-size: 6pt");
+        //ui->ButtonDeckPlay->setStyleSheet("font-size: 6pt");
+        ui->LabelStats->setStyleSheet("font-size: 7pt");
+        //ui->frame->setContentsMargins(0, 0, 0, 0);
+    }
+}
+
+session::~session()
+{
+    delete ui;
+}
+
+void session::start(QString path) {
+    qDebug() << "Called start to session with path:" << directories::sessionSaves.filePath(path);
+    QSettings settings(directories::sessionSaves.filePath(path), QSettings::IniFormat);
+    settings.setParent(this);
+    settings.sync();
+
+    qDebug() << "Settings session valid:" << settings.value("session").isValid();
+
+    sessionSaved = settings.value("session").value<sessionStr>();
+
+    qDebug() << "Settings status:" << settings.status();
+
+    //qDebug() << "Readed session from path:" << path << "it is:" << sessionSaved;
+
+    ui->sessionName->setText(sessionSaved.core.name);
+
+    showRegularStats();
+    timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, &session::statsManager);
+    timer->start(800);
+
+    QFont font("Arial", 7);
+    QToolTip::setFont(font);
+}
+
+void session::on_ButtonDeckPlay_clicked()
+{
+    emit playSession(sessionSaved);
+}
+
+void session::on_ButtonOptions_clicked()
+{
+    editSession* editSessionDialog = new editSession();
+    connect(editSessionDialog, &editSession::refreshSessionsSignal, this, &session::refreshSessionsSlot);
+    editSessionDialog->start(sessionSaved);
+    editSessionDialog->exec();
+}
+
+void session::on_ButtonBrowse_clicked()
+{
+    cardBrowser* browser = new cardBrowser();
+    if (ereader) {
+        browser->show();
+    }
+    browser->start(sessionSaved);
+    browser->exec();
+}
+
+void session::on_ButtonAddCard_clicked()
+{
+    cardEditor* editor = new cardEditor();
+    if (ereader) {
+        editor->show();
+    }
+    editor->start(sessionSaved);
+    editor->exec();
+}
+
+void session::refreshSessionsSlot() {
+    emit refreshSessionsSignal();
+}
+
+void session::showRegularStats() {
+    ui->LabelStats->setText(getSmallStatsForSession(sessionSaved, true));
+    showDueForecast();
+}
+
+void session::showDueForecast()
+{
+    QSettings settings(directories::sessionSaves.filePath(sessionSaved.core.name),
+                       QSettings::IniFormat);
+    QVariant sm2Raw = settings.value("sm2Mode/cardData");
+    if (!sm2Raw.isValid() || sm2Raw.isNull()) return;
+
+    QMap<QString, QVariant> rawMap = sm2Raw.toMap();
+    QDateTime now = QDateTime::currentDateTime();
+
+    int dueNow = 0, dueToday = 0, dueTomorrow = 0, dueWeek = 0;
+
+    for (auto it = rawMap.begin(); it != rawMap.end(); ++it) {
+        sm2CardData d = it.value().value<sm2CardData>();
+        if (d.suspended || d.leeched) continue;
+        if (d.state != SM2_REVIEW && d.state != SM2_LEARNING) continue;
+        if (!d.due.isValid()) continue;
+
+        qint64 secs = now.secsTo(d.due);
+        if (secs <= 0) dueNow++;
+        else if (secs <= 86400) dueToday++;
+        else if (secs <= 172800) dueTomorrow++;
+        else if (secs <= 604800) dueWeek++;
+    }
+
+    QString forecast;
+    forecast += QString("<br><b>Due forecast:</b><br>");
+    forecast += QString("Now: %1<br>").arg(dueNow);
+    forecast += QString("Today: %1<br>").arg(dueToday);
+    if (dueTomorrow > 0) forecast += QString("Tomorrow: %1<br>").arg(dueTomorrow);
+    if (dueWeek > 0) forecast += QString("This week: %1<br>").arg(dueWeek);
+
+    QString current = ui->LabelStats->toHtml();
+    current += forecast;
+    ui->LabelStats->setHtml(current);
+}
+
+void session::showFocusedStats() {
+    QString info = getStatsForSession(sessionSaved, true, false, false);
+    qDebug() << "Focused info length:" << info.length();
+    // It crashes sometimes if it's too big? ereader specific
+    if(info.length() > 220 && info.length() < 500) {
+        if(QToolTip::isVisible() == false) {
+            QApplication::processEvents();
+            QToolTip::showText( ui->LabelStats->mapToGlobal( QPoint( 0, 0 ) ), info);
+            QApplication::processEvents();
+        } else {
+            QToolTip::hideText();
+        }
+    } else {
+        ui->LabelStats->setText(info);
+    }
+}
+
+void session::statsManager() {
+    if(ui->LabelStats->hasFocus() == true) {
+        if(changedFocus == true) {
+            showFocusedStats();
+            normalStats = false;
+            changedFocus = false;
+        }
+    } else {
+        changedFocus = true;
+        if(normalStats == false) {
+            showRegularStats();
+            normalStats = true;
+        }
+    }
+}
+
+void session::on_sessionName_cursorPositionChanged(int arg1, int arg2)
+{
+    Q_UNUSED(arg1);
+    Q_UNUSED(arg2);
+    ui->sessionName->deselect();
+    if(startBoolIgnoreChanged == false) {
+        if(QToolTip::isVisible() == false) {
+            QApplication::processEvents();
+            QToolTip::showText( ui->sessionName->mapToGlobal( QPoint( 0, 0 ) ), ui->sessionName->text());
+            QApplication::processEvents();
+        }
+    } else {
+        startBoolIgnoreChanged = false;
+    }
+}
+
